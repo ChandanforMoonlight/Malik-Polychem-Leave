@@ -1,18 +1,24 @@
 {
   "name": "Malik Polychem Leave Management",
   "short_name": "MP Leave",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#173f70",
   "icons": [
     {
-      "src": "./icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "src": "./leave-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./leave-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "id": "/Malik-Polychem-Leave/",
+  "start_url": "/Malik-Polychem-Leave/",
+  "scope": "/Malik-Polychem-Leave/"
 }
