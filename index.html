@@ -875,11 +875,14 @@
       <form id="loginForm">
 
         <div class="form-group">
-          <label for="loginEmail">Email</label>
+          <label for="loginEmail">Email or Phone Number</label>
           <input
-            type="email"
+            type="text"
             id="loginEmail"
-            placeholder="Enter your email"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            placeholder="Email or 10-digit mobile number"
             required
           >
         </div>
@@ -2510,13 +2513,47 @@ supabaseClient.auth.onAuthStateChange(
    LOGIN
 ========================================================= */
 
+// Phone numbers are login aliases; passwords are verified by Supabase Auth.
+const phoneLoginEmails = Object.freeze({
+  "7678501758": "ea.mdmalikpolychem@gmail.com",
+  "9999993939": "purchase.malikpolychem@gmail.com",
+  "7827856499": "mis.malikpolychem@gmail.com",
+  "7011947885": "deepak.malikpolychem@gmail.com",
+  "9718819037": "sales@malikpolychem.in",
+  "9870737915": "production2.malikpolychem@gmail.com",
+  "9817653512": "storefp.malikgroup@gmail.com",
+  "7206625286": "malikpolychem.naveen@gmail.com",
+  "8860092397": "accounts.ho@malikpolychem.in",
+  "7011948419": "accounts@malikpolychem.in",
+  "7011978637": "production.malikpolychem@gmail.com",
+  "9729214416": "qc@malikpolychem.in",
+  "7505154846": "costing@malikpolychem.in",
+  "8221839488": "drawings2.malikpolychem@gmail.com",
+  "7236046853": "drawings.malikpolychem@gmail.com"
+});
+function resolveLoginEmail(identifier) {
+  const value = String(identifier || '').trim();
+  if (value.includes('@')) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new Error('Please enter a valid email address.');
+    return value.toLowerCase();
+  }
+  if (!/^[+\d\s()-]+$/.test(value)) throw new Error('Enter your email or registered 10-digit mobile number.');
+  let digits = value.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (!/^[6-9]\d{9}$/.test(digits)) throw new Error('Please enter a valid 10-digit mobile number.');
+  const email = phoneLoginEmails[digits];
+  if (!email) throw new Error('This number is not registered for login. Use your email or contact Admin.');
+  return email;
+}
+
 document.getElementById("loginForm").addEventListener(
   "submit",
   async function (event) {
 
     event.preventDefault();
 
-    const email =
+    const identifier =
       document.getElementById("loginEmail").value.trim();
 
     const password =
@@ -2534,6 +2571,8 @@ document.getElementById("loginForm").addEventListener(
       /*
         First try REAL SUPABASE LOGIN
       */
+
+      const email = resolveLoginEmail(identifier);
 
       const { data, error } =
         await supabaseClient.auth.signInWithPassword({
