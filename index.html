@@ -7,7 +7,8 @@
   <title>Malik Polychem | Leave Management</title>
 
   <!-- Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     * {
@@ -990,6 +991,10 @@
         <span class="nav-icon">📜</span>
         <span>Audit Log</span>
       </div>
+
+      <button type="button" class="nav-item" id="changePasswordBtn" onclick="openPasswordChange()" style="width:100%;border:0;background:transparent;color:inherit;font:inherit;text-align:left">
+        <span class="nav-icon">🔑</span><span>Change Password</span>
+      </button>
 
       <div
         class="nav-item"
@@ -2343,6 +2348,20 @@
        PART 2 JAVASCRIPT WILL GO HERE
   ====================================================== -->
 
+<div id="passwordChangeModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="passwordChangeTitle">
+ <div class="modal" style="max-width:460px">
+  <div class="modal-header"><h2 id="passwordChangeTitle" class="modal-title">Change Password</h2><button type="button" class="modal-close" aria-label="Close" onclick="closePasswordChange()">×</button></div>
+  <p style="margin-bottom:18px;color:#64748b">Change your login password here. No email link is needed.</p>
+  <form id="passwordChangeForm">
+   <div class="form-group"><label for="passwordCurrent">Current Password</label><input id="passwordCurrent" type="password" autocomplete="current-password" required></div>
+   <div class="form-group"><label for="passwordNew">New Password</label><input id="passwordNew" type="password" autocomplete="new-password" minlength="8" required><small>Use at least 8 characters, including a letter and a number.</small></div>
+   <div class="form-group"><label for="passwordConfirm">Confirm New Password</label><input id="passwordConfirm" type="password" autocomplete="new-password" minlength="8" required></div>
+   <label style="display:flex;align-items:center;gap:8px;margin:14px 0"><input type="checkbox" id="passwordShow" onchange="toggleChangePasswords(this.checked)" style="width:auto">Show passwords</label>
+   <p id="passwordChangeMessage" role="status" aria-live="polite" style="margin-bottom:14px"></p>
+   <div style="display:flex;gap:12px;flex-wrap:wrap"><button type="submit" id="passwordSaveBtn" class="btn btn-primary">Save Password</button><button type="button" class="btn btn-secondary" onclick="closePasswordChange()">Cancel</button></div>
+  </form>
+ </div>
+</div>
   <script>
 
     /*
@@ -8197,5 +8216,66 @@ async function submitLeaveModification(values){
   }finally{if(button)button.disabled=false;}
 }
 document.getElementById('leaveForm').addEventListener('reset',resetLeaveEditing);
+</script><script>
+
+let passwordChangeBusy = false;
+function toggleChangePasswords(visible) {
+  for (const id of ['passwordCurrent','passwordNew','passwordConfirm']) document.getElementById(id).type=visible?'text':'password';
+}
+function closePasswordChange() {
+  if(passwordChangeBusy)return;
+  document.getElementById('passwordChangeModal').classList.remove('show');
+  document.getElementById('passwordChangeForm').reset();
+  toggleChangePasswords(false);
+}
+function openPasswordChange() {
+  if(!currentUser || currentUser.demo){showToast('Please log in with your real employee account.');return;}
+  document.getElementById('passwordChangeForm').reset();
+  toggleChangePasswords(false);
+  document.getElementById('passwordChangeMessage').textContent='';
+  document.getElementById('passwordChangeModal').classList.add('show');
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop')?.classList.remove('show');
+  document.getElementById('passwordCurrent').focus();
+}
+function validatePasswordChange(oldPassword,newPassword,confirmation) {
+  if(!oldPassword)throw new Error('Enter your current password.');
+  if(newPassword.length<8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword))throw new Error('Use at least 8 characters, including a letter and a number.');
+  if(newPassword!==confirmation)throw new Error('New passwords do not match.');
+  if(newPassword===oldPassword)throw new Error('Choose a password different from your current password.');
+}
+async function saveOwnPassword(event) {
+  event.preventDefault();
+  if(passwordChangeBusy)return;
+  const message=document.getElementById('passwordChangeMessage');
+  const button=document.getElementById('passwordSaveBtn');
+  message.style.color='#dc2626';message.textContent='';
+  try {
+    if(!currentUser || currentUser.demo)throw new Error('Log in with your real employee account first.');
+    const oldPassword=document.getElementById('passwordCurrent').value;
+    const newPassword=document.getElementById('passwordNew').value;
+    validatePasswordChange(oldPassword,newPassword,document.getElementById('passwordConfirm').value);
+    passwordChangeBusy=true;button.disabled=true;button.textContent='Saving...';
+    const {data:verified,error:identityError}=await supabaseClient.auth.getUser();
+    if(identityError || !verified.user || verified.user.id!==currentUser.id)throw new Error('Session expired. Log out and log in again.');
+    const ownerId=verified.user.id;
+    // Verify the current password and refresh sign-in without sending email.
+    const {data:login,error:loginError}=await supabaseClient.auth.signInWithPassword({email:verified.user.email,password:oldPassword});
+    if(loginError)throw new Error(loginError.code==='invalid_credentials'?'Current password is incorrect.':loginError.message);
+    if(!login.user || login.user.id!==ownerId)throw new Error('Account verification failed. Log in again.');
+    const {data:updated,error:updateError}=await supabaseClient.auth.updateUser({password:newPassword,current_password:oldPassword});
+    if(updateError)throw updateError;
+    if(!updated.user || updated.user.id!==ownerId)throw new Error('Password update could not be confirmed. Please log in again.');
+    currentUser=updated.user;
+    passwordChangeBusy=false;closePasswordChange();
+    showToast('Password changed successfully. Use your new password next time.');
+  } catch(error) {
+    message.textContent=error.message || 'Unable to change password. Please try again.';
+  } finally {
+    passwordChangeBusy=false;button.disabled=false;button.textContent='Save Password';
+  }
+}
+document.getElementById('passwordChangeForm').addEventListener('submit',saveOwnPassword);
+
 </script></body>
 </html>
