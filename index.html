@@ -2515,21 +2515,23 @@ supabaseClient.auth.onAuthStateChange(
 
 // Phone numbers are login aliases; passwords are verified by Supabase Auth.
 const phoneLoginEmails = Object.freeze({
-  "7678501758": "ea.mdmalikpolychem@gmail.com",
-  "9999993939": "purchase.malikpolychem@gmail.com",
-  "7827856499": "mis.malikpolychem@gmail.com",
-  "7011947885": "deepak.malikpolychem@gmail.com",
-  "9718819037": "sales@malikpolychem.in",
-  "9870737915": "production2.malikpolychem@gmail.com",
-  "9817653512": "storefp.malikgroup@gmail.com",
-  "7206625286": "malikpolychem.naveen@gmail.com",
-  "8860092397": "accounts.ho@malikpolychem.in",
-  "7011948419": "accounts@malikpolychem.in",
-  "7011978637": "production.malikpolychem@gmail.com",
-  "9729214416": "qc@malikpolychem.in",
-  "7505154846": "costing@malikpolychem.in",
-  "8221839488": "drawings2.malikpolychem@gmail.com",
-  "7236046853": "drawings.malikpolychem@gmail.com"
+  "7236046853": "vinay@malikpolychem.com",
+  "9817653512": "dwivedi@malikpolychem.com",
+  "8860092397": "poonam@malikpolychem.com",
+  "7505154846": "deepanshu@malikpolychem.com",
+  "9870737915": "chandraveer@malikpolychem.com",
+  "7011948419": "saurabh@malikpolychem.com",
+  "9718819037": "gunjan@malikpolychem.com",
+  "7011947885": "deepak@malikpolychem.com",
+  "7011978637": "sns@malikpolychem.com",
+  "9810333887": "admin@malikpolychem.com",
+  "9729214416": "varun@malikpolychem.com",
+  "9999993939": "akhilesh@malikpolychem.com",
+  "9354283844": "akash@malikpolychem.com",
+  "8221839488": "narender@malikpolychem.com",
+  "7206625286": "naveen@malikpolychem.com",
+  "7827856499": "chandan@malikpolychem.com",
+  "7678501758": "bhavneesh@malikpolychem.com"
 });
 function resolveLoginEmail(identifier) {
   const value = String(identifier || '').trim();
@@ -2669,7 +2671,7 @@ document.getElementById("loginForm").addEventListener(
       console.error(error);
 
       message.textContent =
-        "Login failed. Please check Supabase settings.";
+        error.message || "Unable to log in. Please try again.";
 
       message.style.color = "#dc2626";
 
