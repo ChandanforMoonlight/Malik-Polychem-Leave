@@ -832,7 +832,14 @@
         display: block;
       }
     }
-  </style>
+  button:disabled, input[type="submit"]:disabled { opacity:.55; cursor:wait; background:#9ca3af !important; }
+#leaveSubmitLoading[hidden] { display:none; }
+#leaveSubmitLoading { position:fixed; inset:0; z-index:99999; background:rgba(15,23,42,.55); display:flex; align-items:center; justify-content:center; }
+#leaveSubmitLoading > div { background:white; padding:28px; border-radius:16px; text-align:center; color:#111827; }
+.leave-spinner { width:32px; height:32px; border:4px solid #ddd; border-top-color:#4f46e5; border-radius:50%; animation:leaveSpin 1s linear infinite; margin:0 auto 12px; }
+@keyframes leaveSpin { to { transform:rotate(360deg); } }
+#pendingFaceCount { background:#dc2626; color:white; border-radius:99px; padding:2px 7px; }
+</style>
 <style>
 .company-logo{display:block;width:100%;max-width:340px;height:auto;margin:0 auto 20px}
 .brand{flex-wrap:wrap}.sidebar-company-logo{width:100%;height:auto;background:white;border-radius:6px;padding:4px}
@@ -1035,6 +1042,7 @@
 
         </div>
 
+        <button type="button" id="pendingFaceButton" class="btn btn-secondary btn-sm" onclick="showPage(currentEmployee?.role==='employee'?'myLeaves':'approvals')" aria-label="Pending leave applications">Pending <span id="pendingFaceCount">0</span></button>
         <div class="user-area">
 
           <div class="user-info">
@@ -1080,7 +1088,7 @@
             </div>
 
             <div class="stat-card stat-orange">
-              <div class="stat-label">Pending</div>
+              <div class="stat-label">Pending Leave Application Count</div>
               <div id="statPending" class="stat-value">0</div>
             </div>
 
@@ -2519,6 +2527,7 @@ supabaseClient.auth.onAuthStateChange(
 
       currentUser = null;
       currentEmployee = null;
+      updatePendingAppBadge();
 
       showLoginScreen();
 
@@ -3720,7 +3729,19 @@ async function renderTeamAvailability() {
 
 let notificationTimer = null;
 
+function updatePendingAppBadge() {
+  const count = currentEmployee ? getDashboardLeaveScope().filter(l => l.status === 'pending').length : 0;
+  const face = document.getElementById('pendingFaceCount');
+  if (face) face.textContent = count > 99 ? '99+' : String(count);
+  const button = document.getElementById('pendingFaceButton');
+  if (button) button.title = count + ' pending leave applications';
+  if ('setAppBadge' in navigator) {
+    const operation = count ? navigator.setAppBadge(count) : navigator.clearAppBadge();
+    Promise.resolve(operation).catch(() => {});
+  }
+}
 function updateNotificationBadge() {
+  updatePendingAppBadge();
 
   const badge = document.getElementById("notificationBadge");
 
@@ -3753,7 +3774,7 @@ function startNotificationPolling() {
 
     const known = new Set(notifications.map(n => n.id));
 
-    await loadNotifications();
+    await loadAllData();
 
     const fresh =
       notifications.filter(n => !known.has(n.id) && !n.is_read);
@@ -4025,7 +4046,31 @@ function calculateLeaveDays(
 
 let editingLeaveId = null;
 let editingLeaveSnapshot = null;
+let leaveSubmissionInFlight = false;
 async function submitLeave(event) {
+  event.preventDefault();
+  if (leaveSubmissionInFlight) return;
+  leaveSubmissionInFlight = true;
+  const form = document.getElementById('leaveForm');
+  const controls = [...form.querySelectorAll('button, input[type="submit"]')];
+  const previous = controls.map(button => button.disabled);
+  controls.forEach(button => button.disabled = true);
+  form.setAttribute('aria-busy', 'true');
+  document.getElementById('leaveSubmitLoading').hidden = false;
+  try {
+    await submitLeaveInternal(event);
+  } catch (error) {
+    console.error(error);
+    showToast('Could not finish submitting. Check My Leaves before trying again.');
+  } finally {
+    leaveSubmissionInFlight = false;
+    controls.forEach((button, i) => button.disabled = previous[i]);
+    form.removeAttribute('aria-busy');
+    document.getElementById('leaveSubmitLoading').hidden = true;
+  }
+}
+
+async function submitLeaveInternal(event) {
 
   event.preventDefault();
 
@@ -6168,12 +6213,13 @@ function dashboardLeaveTotals(data) {
   return data.reduce((total,leave)=>{
     const requested=Number(leave.requested_total_days??leave.total_days??0);
     const unit=leave.duration_type==='full_day'?1:0.5;
+    if(leave.status==='cancelled') return total;
     total.total+=requested;
     if(leave.status==='approved') {
       total.approved+=Number(leave.total_days||0);
       total.rejected+=(leave.rejected_dates?.length||0)*unit;
     }
-    if(leave.status==='pending')total.pending+=requested;
+    if(leave.status==='pending')total.pending+=1;
     if(leave.status==='rejected')total.rejected+=requested;
     return total;
   },{total:0,approved:0,pending:0,rejected:0});
@@ -6191,7 +6237,7 @@ function renderDashboard() {
   document.getElementById('statApproved').textContent=totals.approved;
   document.getElementById('statPending').textContent=totals.pending;
   document.getElementById('statRejected').textContent=totals.rejected;
-  renderDashboardLeaves(data);renderDashboardBalances();
+  renderDashboardLeaves(data);renderDashboardBalances();updatePendingAppBadge();
 }
 function renderDashboardLeaves(data) {
   const table=document.getElementById('dashboardLeavesTable');
@@ -8277,5 +8323,6 @@ async function saveOwnPassword(event) {
 }
 document.getElementById('passwordChangeForm').addEventListener('submit',saveOwnPassword);
 
-</script></body>
+</script><div id="leaveSubmitLoading" hidden role="status" aria-live="polite"><div><div class="leave-spinner"></div><strong>Saving leave request…</strong><p>Please wait. Do not close or refresh the app.</p></div></div>
+</body>
 </html>
