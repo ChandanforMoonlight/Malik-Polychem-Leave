@@ -1042,7 +1042,7 @@
 
         </div>
 
-        <button type="button" id="pendingFaceButton" class="btn btn-secondary btn-sm" onclick="showPage(currentEmployee?.role==='employee'?'myLeaves':'approvals')" aria-label="Pending leave applications">Pending <span id="pendingFaceCount">0</span></button>
+        <button type="button" id="enablePushBtn" class="btn btn-secondary btn-sm" onclick="enableLeavePush(this)">Enable Notifications</button>
         <div class="user-area">
 
           <div class="user-info">
@@ -2624,6 +2624,7 @@ document.getElementById("loginForm").addEventListener(
               ? "Your account is " + employeeBlockedStatus + ". Please contact HR."
               : "Login successful, but employee profile is not created yet.";
 
+          await detachLeavePush();
           await supabaseClient.auth.signOut();
 
           return;
@@ -8174,6 +8175,64 @@ document.querySelectorAll('input[type="date"]').forEach(input=>{
   });
 });
 </script><script>
+
+const MP_VAPID_PUBLIC_KEY = 'BMXtuBkus3bJJ9ySb5q84ta0iaUeUCjuuLFKYiSJb5G7k44AZRKF_KejoQg_PPBHqh2cev649_3dntDKOD5OHsU';
+function mpPushKey(value) {
+  const raw = atob(value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4-value.length%4)%4));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+async function enableLeavePush(button) {
+  if (!currentEmployee || currentUser?.demo) { showToast('Login with your employee account first.'); return; }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    showToast('Push unavailable. On iPhone, install with Safari → Add to Home Screen, then open the installed app.'); return;
+  }
+  button.disabled = true;
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') throw Error('Notifications are blocked. Allow them in your phone/browser settings.');
+    const registration = await navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'});
+    await Promise.race([navigator.serviceWorker.ready, new Promise((_, reject) => setTimeout(() => reject(Error('Service worker did not start. Check sw.js deployment.')), 15000))]);
+    let subscription = await registration.pushManager.getSubscription();
+    if (subscription) {
+      const currentKey = subscription.options.applicationServerKey;
+      const expectedKey = mpPushKey(MP_VAPID_PUBLIC_KEY);
+      if (currentKey && String(new Uint8Array(currentKey)) !== String(expectedKey)) {
+        await subscription.unsubscribe(); subscription = null;
+      }
+    }
+    let created = false;
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:mpPushKey(MP_VAPID_PUBLIC_KEY)});
+      created = true;
+    }
+    const {error} = await supabaseClient.from('pending_push_subscriptions').upsert({
+      employee_id: currentEmployee.id, subscription:subscription.toJSON()
+    }, {onConflict:'endpoint'});
+    if (error) { if (created) await subscription.unsubscribe(); throw error; }
+    button.textContent = 'Notifications Enabled';
+    updatePendingAppBadge();
+    showToast('This device is registered. Background delivery starts after the database webhook is configured.');
+  } catch (error) {
+    console.error(error); showToast('Notification setup: ' + error.message);
+  } finally { button.disabled = false; }
+}
+async function detachLeavePush() {
+  if (!('serviceWorker' in navigator)) return;
+  const registration = await navigator.serviceWorker.getRegistration(new URL('./',location.href));
+  const subscription = await registration?.pushManager?.getSubscription();
+  if (subscription) {
+    // Unsubscribe at the push service first: queued deliveries to this device stop.
+    await subscription.unsubscribe();
+    const {error} = await supabaseClient.from('pending_push_subscriptions').delete().eq('endpoint',subscription.endpoint);
+    if (error) console.warn('Push registration cleanup will be retried by the server.');
+  }
+  if ('clearAppBadge' in navigator) await navigator.clearAppBadge().catch(()=>{});
+  const notices = await registration?.getNotifications({tag:'mp-leave-pending'});
+  notices?.forEach(notice=>notice.close());
+  const button=document.getElementById('enablePushBtn');
+  if(button)button.textContent='Enable Notifications';
+}
+
 if('serviceWorker' in navigator && location.protocol==='https:') {
   navigator.serviceWorker.register('./sw.js').catch(console.error);
 }
