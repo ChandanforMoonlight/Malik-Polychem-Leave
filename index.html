@@ -1122,7 +1122,8 @@
                   <thead id="dashboardLeavesHead">
                     <tr>
                       <th>Leave Type</th>
-                      <th>From</th>
+                      <th>Date of Applying</th>
+                    <th>From</th>
                       <th>To</th>
                       <th>Days</th>
                       <th>Status</th>
@@ -1325,6 +1326,7 @@
                 <thead>
                   <tr>
                     <th>Leave Type</th>
+                    <th>Date of Applying</th>
                     <th>From</th>
                     <th>To</th>
                     <th>Days</th>
@@ -1419,6 +1421,7 @@
                     <th>Employee</th>
                     <th>Reporting Manager</th>
                     <th>Leave Type</th>
+                    <th>Date of Applying</th>
                     <th>From</th>
                     <th>To</th>
                     <th>Days</th>
@@ -1452,7 +1455,7 @@
             </div>
             <p style="padding:0 20px;color:#6b7280">Admin: all decisions. Manager: your team's requests and decisions made by you.</p>
             <div class="table-wrapper"><table><thead><tr>
-              <th>Employee</th><th>Leave Type</th><th>Requested Period</th><th>Decision</th>
+              <th>Employee</th><th>Leave Type</th><th>Date of Applying</th><th>Requested Period</th><th>Decision</th>
               <th>Approved Dates</th><th>Rejected Dates</th><th>Rejection Reason</th>
               <th>Alternate Number</th><th>Decision By</th><th>Decision Time</th>
             </tr></thead><tbody id="approvalHistoryTable"></tbody></table></div>
@@ -1729,6 +1732,7 @@
                     <th>Employee</th>
                     <th>Department</th>
                     <th>Leave Type</th>
+                    <th>Date of Applying</th>
                     <th>From</th>
                     <th>To</th>
                     <th>Days</th>
@@ -3081,6 +3085,8 @@ function showPage(pageName) {
     renderDashboard();
   }
 
+  if (pageName === "applyLeave") updateDateRules();
+
   if (pageName === "myLeaves") {
     renderMyLeaves();
   }
@@ -3929,32 +3935,44 @@ function setupForms() {
    DATE RULES
 ========================================================= */
 
-function updateDateRules() {
-
-  const duration =
-    document.getElementById("durationType").value;
-
-  const toDate =
-    document.getElementById("toDate");
-
-
-  if (
-    duration === "first_half" ||
-    duration === "second_half"
-  ) {
-
-    toDate.value =
-      document.getElementById("fromDate").value;
-
-    toDate.disabled = true;
-
-  } else {
-
-    toDate.disabled = false;
-
-  }
-
+function indiaDateISO(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value);
+  const get = type => parts.find(p => p.type === type).value;
+  return get('year')+'-'+get('month')+'-'+get('day');
 }
+function applyingDate(leave) {
+  if(!leave.created_at) return 'Not recorded';
+  const date = new Date(leave.created_at);
+  if(!Number.isFinite(date.getTime())) return 'Not recorded';
+  const iso = indiaDateISO(date);
+  return iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4);
+}
+function leaveDateError(from, to, today = indiaDateISO()) {
+  const valid = value => {
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+    const date = new Date(value+'T00:00:00Z');
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10) === value;
+  };
+  if(!valid(from) || !valid(to)) return 'Please enter valid From and To dates with a four-digit year.';
+  if(from < today || to < today) return 'Back-date leave is not allowed. Select today or a future date.';
+  if(to < from) return 'To Date cannot be before From Date.';
+  return '';
+}
+function updateDateRules() {
+  const from = document.getElementById('fromDate');
+  const to = document.getElementById('toDate');
+  const today = indiaDateISO();
+  from.min = today;
+  to.min = from.value && from.value > today ? from.value : today;
+  const duration = document.getElementById('durationType').value;
+  const half = duration === 'first_half' || duration === 'second_half';
+  to.disabled = half;
+  if(half) to.value = from.value;
+}
+// Refresh constraints when a tab is reopened or left open across midnight.
+document.addEventListener('visibilitychange', () => {if(!document.hidden) updateDateRules();});
+window.addEventListener('focus', updateDateRules);
+setInterval(updateDateRules, 60000);
 
 
 /* =========================================================
@@ -4096,6 +4114,9 @@ async function submitLeaveInternal(event) {
 
   const toDate =
     document.getElementById("toDate").value;
+
+  const dateError = leaveDateError(fromDate, toDate);
+  if(dateError) { showToast(dateError); updateDateRules(); return; }
 
   const reason =
     document.getElementById("leaveReason").value.trim();
@@ -4386,7 +4407,7 @@ function renderMyLeaves() {
 
     table.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="empty-state">
             <div class="empty-icon">📋</div>
             No leave requests found.
@@ -4413,6 +4434,7 @@ function renderMyLeaves() {
 
           <td>${escapeHtml(typeName)}</td>
 
+          <td>${applyingDate(leave)}</td>
           <td>${formatDate(leave.from_date)}</td>
 
           <td>${formatDate(leave.to_date)}</td>
@@ -4675,7 +4697,7 @@ function renderApprovals() {
 
     table.innerHTML = `
       <tr>
-        <td colspan="9">
+        <td colspan="10">
           <div class="empty-state">
             <div class="empty-icon">✅</div>
             No pending approvals.
@@ -4718,6 +4740,7 @@ function renderApprovals() {
 
           <td>${escapeHtml(typeName)}</td>
 
+          <td>${applyingDate(leave)}</td>
           <td>${formatDate(leave.from_date)}</td>
 
           <td>${formatDate(leave.to_date)}</td>
@@ -6243,7 +6266,7 @@ function renderDashboard() {
 function renderDashboardLeaves(data) {
   const table=document.getElementById('dashboardLeavesTable');
   const managerView=['manager','admin'].includes(currentEmployee?.role);
-  const headers=managerView?['Employee','Leave Type','From','To','Days','Reason / Contact','Status','Action']:['Leave Type','From','To','Days','Status'];
+  const headers=managerView?['Employee','Leave Type','Date of Applying','From','To','Days','Reason / Contact','Status','Action']:['Leave Type','Date of Applying','From','To','Days','Status'];
   document.getElementById('dashboardLeavesHead').innerHTML='<tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr>';
   const recent=managerView
     ?data.filter(l=>l.status==='pending' && canActOnLeave(l)).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))
@@ -6254,7 +6277,7 @@ function renderDashboardLeaves(data) {
     return `<tr>
       ${managerView?'<td>'+escapeHtml(employee?.full_name||'Unknown employee')+'</td>':''}
       <td>${escapeHtml(leave.leave_types?.name||getLeaveTypeName(leave.leave_type_id))}</td>
-      <td>${formatDate(leave.from_date)}</td><td>${formatDate(leave.to_date)}</td><td>${Number(leave.total_days||0)}</td>
+      <td>${applyingDate(leave)}</td><td>${formatDate(leave.from_date)}</td><td>${formatDate(leave.to_date)}</td><td>${Number(leave.total_days||0)}</td>
       ${managerView?'<td>'+escapeHtml(leave.reason||'-')+leaveDetails(leave)+'</td>':''}
       <td>${leaveStatusBadge(leave)}</td>
       ${managerView?`<td class="dashboard-leave-actions">
@@ -6686,7 +6709,7 @@ function renderReports() {
 
     table.innerHTML = `
       <tr>
-        <td colspan="7">
+        <td colspan="8">
           <div class="empty-state">
             No report data available.
           </div>
@@ -6733,6 +6756,7 @@ function renderReports() {
             )}
           </td>
 
+          <td>${applyingDate(leave)}</td>
           <td>
             ${formatDate(
               leave.from_date
@@ -6795,11 +6819,13 @@ document
               leave.leave_type_id
             ),
 
+          'Date of Applying': applyingDate(leave),
+
           From:
-            leave.from_date,
+            formatDate(leave.from_date),
 
           To:
-            leave.to_date,
+            formatDate(leave.to_date),
 
           Days:
             leave.total_days,
@@ -7999,13 +8025,13 @@ function exportApprovalHistory() {
   if(!['admin','manager'].includes(currentEmployee?.role)) return;
   const data=getFilteredApprovalHistory();
   if(!data.length){showToast('No history matches your filters.');return;}
-  const rows=[['Employee','Leave Type','From Date','To Date','Requested Days','Status','Approved Dates','Rejected Dates','Rejection Reason','Alternate Number','Decision By','Decision Time']];
+  const rows=[['Employee','Leave Type','Date of Applying','From Date','To Date','Requested Days','Status','Approved Dates','Rejected Dates','Rejection Reason','Alternate Number','Decision By','Decision Time']];
   for(const leave of data){
     const employee=leave.employees||getEmployeeById(leave.employee_id);
     const period=formatDate(leave.from_date)+' - '+formatDate(leave.to_date);
     rows.push([
       employee?.full_name||'Unknown employee',leave.leave_types?.name||getLeaveTypeName(leave.leave_type_id),
-      formatDate(leave.from_date),formatDate(leave.to_date),Number(leave.requested_total_days??leave.total_days),
+      applyingDate(leave),formatDate(leave.from_date),formatDate(leave.to_date),Number(leave.requested_total_days??leave.total_days),
       leave.status==='approved'&&leave.rejected_dates?.length?'Partially approved':capitalize(leave.status),
       leave.approved_dates?.length?leave.approved_dates.map(formatDate).join(', '):leave.status==='approved'?'Full request: '+period:'',
       leave.rejected_dates?.length?leave.rejected_dates.map(formatDate).join(', '):leave.status==='rejected'?'Full request: '+period:'',
@@ -8027,7 +8053,7 @@ function renderApprovalHistory() {
   if(!table) return;
   if(!['admin','manager'].includes(currentEmployee?.role)) {table.innerHTML='';return;}
   const data=getFilteredApprovalHistory();
-  if(!data.length) {table.innerHTML='<tr><td colspan="10"><div class="empty-state">No approval history found.</div></td></tr>';return;}
+  if(!data.length) {table.innerHTML='<tr><td colspan="11"><div class="empty-state">No approval history found.</div></td></tr>';return;}
   table.innerHTML=data.map(leave=>{
     const employee=leave.employees||getEmployeeById(leave.employee_id);
     const period=formatDate(leave.from_date)+' – '+formatDate(leave.to_date);
@@ -8038,6 +8064,7 @@ function renderApprovalHistory() {
     return `<tr>
       <td>${escapeHtml(employee?.full_name||'Unknown employee')}</td>
       <td>${escapeHtml(leave.leave_types?.name||getLeaveTypeName(leave.leave_type_id))}</td>
+      <td>${applyingDate(leave)}</td>
       <td>${period}<span class="leave-detail">Requested: ${Number(leave.requested_total_days??leave.total_days)} day(s)</span></td>
       <td>${leaveStatusBadge(leave)}</td><td>${approved}</td><td>${rejected}</td>
       <td>${escapeHtml(leave.rejection_reason||'—')}</td>
